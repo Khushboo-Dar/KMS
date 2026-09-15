@@ -16,7 +16,7 @@ CRC is calculated over the packet data excluding:
 """
 
 
-from .config import (
+from .app_config import (
     CRC_REFLECTED_POLYNOMIAL,
     CRC_INITIAL_VALUE,
     CRC_XOR_OUT,

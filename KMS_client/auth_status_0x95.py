@@ -20,12 +20,12 @@ Packet structure:
 Total = 23 bytes
 """
 
-from .config import (
+from .app_config import (
     SOF,
     MSG_AUTHENTICATION_STATUS,
 )
 
-from .crc import calculate_crc_bytes
+from .crc_validator import calculate_crc_bytes
 
 
 # ============================================================

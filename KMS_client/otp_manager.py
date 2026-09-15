@@ -16,7 +16,7 @@ ORACLE_USER = os.getenv(
 
 ORACLE_PASSWORD = os.getenv(
     "ORACLE_PASSWORD",
-    "Suraksha#123"
+    "Suraksha#1234"
 )
 
 ORACLE_DSN = os.getenv(

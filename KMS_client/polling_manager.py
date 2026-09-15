@@ -24,9 +24,12 @@ It does NOT contain packet-building or CRC logic.
 
 
 import time
+import os
 from datetime import datetime
 
-from .config import (
+import oracledb
+
+from .app_config import (
     KAVACH_ID,
     UNIT_TYPE,
     POLLING_INTERVAL_SECONDS,
@@ -35,24 +38,28 @@ from .config import (
     MSG_AUTHENTICATION_RESPONSE,
 )
 
-from .scheduler import (
+from .polling_scheduler import (
     calculate_random_request_minute,
 )
 
-from .authentication_query import (
+from .auth_query_0x94 import (
     build_authentication_query,
 )
 
-from .authentication_status import (
+from .auth_status_0x95 import (
     parse_authentication_status,
 )
 
-from .authentication_response import (
+from .auth_response_0x93 import (
     parse_authentication_response,
 )
 
 from .udp_client import (
     KmsUdpClient,
+)
+
+from .encryption_service import (
+    EncryptionService,
 )
 
 
@@ -293,6 +300,8 @@ class KmsPollingManager:
                     f"{result['crc_valid']}"
                 )
 
+                self.save_key_sets(result)
+
                 return True
 
             except ValueError as error:
@@ -316,6 +325,26 @@ class KmsPollingManager:
             )
 
             return False
+
+    def save_key_sets(
+        self,
+        result: dict,
+    ) -> None:
+        connection = oracledb.connect(
+            user=os.environ["ORACLE_USER"],
+            password=os.environ["ORACLE_PASSWORD"],
+            dsn=os.environ["ORACLE_DSN"],
+        )
+
+        try:
+            saved = EncryptionService().save_key_sets(
+                connection,
+                result["key_set_id"],
+                result["key_sets"],
+            )
+            print(f"Saved encrypted key sets: {saved}")
+        finally:
+            connection.close()
 
     # ========================================================
     # SINGLE POLL

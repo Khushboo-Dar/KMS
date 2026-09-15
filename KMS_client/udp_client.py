@@ -11,7 +11,7 @@ Responsible only for:
 
 import socket
 
-from .config import (
+from .app_config import (
     KMS_IP,
     KMS_PORT,
     UDP_TIMEOUT_SECONDS,

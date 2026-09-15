@@ -32,12 +32,12 @@ Total packet size:
     24 + (40 * number_of_key_sets)
 """
 
-from .config import (
+from .app_config import (
     SOF,
     MSG_AUTHENTICATION_RESPONSE,
 )
 
-from .crc import calculate_crc_bytes
+from .crc_validator import calculate_crc_bytes
 
 
 # ============================================================

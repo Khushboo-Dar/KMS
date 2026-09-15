@@ -10,14 +10,14 @@ Responsible for:
     - Parsing 0x91 and 0x95 packets
 """
 
-from .config import (
+from .app_config import (
     SOF,
     MSG_IDENTIFICATION_ACK,
     MSG_AUTHENTICATION_STATUS,
     MSG_AUTHENTICATION_RESPONSE,
 )
 
-from .crc import calculate_crc_bytes
+from .crc_validator import calculate_crc_bytes
 
 
 # ============================================================

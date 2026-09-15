@@ -28,7 +28,7 @@ Important:
 
 from datetime import datetime, timedelta
 
-from .config import (
+from .app_config import (
     POLLING_INTERVAL_SECONDS,
     RANDOM_REQUEST_WINDOW_MINUTES,
     RETRY_INTERVAL_SECONDS,

@@ -4,7 +4,7 @@ import logging
 import signal
 import sys
 
-from .config import (
+from .app_config import (
     KMS_IP,
     KMS_PORT,
     KAVACH_ID,

@@ -12,14 +12,14 @@ Packet structure follows the KAVACH KMS SRS.
 
 from datetime import datetime
 
-from .config import (
+from .app_config import (
     SOF,
     MSG_AUTHENTICATION_QUERY,
     MSG_AUTHENTICATION_REQUEST,
     SIM_ID,
 )
 
-from .crc import calculate_crc_bytes
+from .crc_validator import calculate_crc_bytes
 
 
 # ============================================================
