@@ -25,12 +25,11 @@ CRC input:
     Message Type through OTP
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from .app_config import (
     SOF,
     MSG_AUTHENTICATION_REQUEST,
-    SIM_ID,
 )
 
 from .crc_validator import calculate_crc_bytes
@@ -42,6 +41,7 @@ from .crc_validator import calculate_crc_bytes
 
 MESSAGE_LENGTH = 19
 PACKET_SIZE = 24
+IST = timezone(timedelta(hours=5, minutes=30))
 
 
 # ============================================================
@@ -110,7 +110,7 @@ def build_authentication_request(
     kavach_id: int,
     unit_type: int,
     otp: str,
-    sim_id: int = SIM_ID,
+    sim_id: int,
     timestamp: datetime | None = None,
 ) -> bytes:
     """
@@ -118,7 +118,7 @@ def build_authentication_request(
     """
 
     if timestamp is None:
-        timestamp = datetime.now()
+        timestamp = datetime.now(IST)
 
     # Message Type
     message_type = bytes([
@@ -201,7 +201,7 @@ def authentication_request_hex(
     kavach_id: int,
     unit_type: int,
     otp: str,
-    sim_id: int = SIM_ID,
+    sim_id: int,
     timestamp: datetime | None = None,
 ) -> str:
     """

@@ -16,7 +16,6 @@ from .app_config import (
     SOF,
     MSG_AUTHENTICATION_QUERY,
     MSG_AUTHENTICATION_REQUEST,
-    SIM_ID,
 )
 
 from .crc_validator import calculate_crc_bytes
@@ -82,7 +81,6 @@ def time_to_kavach_bytes(dt: datetime) -> bytes:
 def build_authentication_query(
     kavach_id: int,
     unit_type: int,
-    sim_id: int = SIM_ID,
     timestamp: datetime | None = None,
 ) -> bytes:
     """
@@ -218,7 +216,7 @@ def build_authentication_key_request(
     kavach_id: int,
     unit_type: int,
     otp: str,
-    sim_id: int = SIM_ID,
+    sim_id: int,
     timestamp: datetime | None = None,
 ) -> bytes:
     """

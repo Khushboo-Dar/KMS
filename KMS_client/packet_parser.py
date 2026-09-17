@@ -145,7 +145,17 @@ def validate_packet(packet: bytes) -> None:
 
 def parse_identification_ack(packet: bytes) -> dict:
     """
-    Parse Identification Acknowledgement (0x91).
+    Parse an SRS-format Identification Acknowledgement (0x91).
+
+    Packet layout::
+
+        SOF(2) | Type=0x91(1) | Length=0x000F(2) |
+        Date(3) | Time(3) | Unit Type(1) | KAVACH Unit ID(3) |
+        Acknowledgement Status(1) | CRC(4)
+
+    ``Message Length`` counts Date through CRC, inclusively, so it is 15
+    bytes and the complete packet is 20 bytes.  CRC is calculated from the
+    message type through acknowledgement status.
 
     Expected status:
 
@@ -164,15 +174,26 @@ def parse_identification_ack(packet: bytes) -> dict:
             f"received 0x{message_type:02X}"
         )
 
-    # Status is expected immediately after
-    # the message header fields according to
-    # the packet implementation.
-    #
-    # Keep parsing isolated here so that the
-    # exact SRS field layout can be adjusted
-    # without changing polling logic.
+    message_length = get_message_length(packet)
+    expected_message_length = 15
+    expected_packet_length = 20
 
-    status = packet[5]
+    if (
+        message_length != expected_message_length
+        or len(packet) != expected_packet_length
+    ):
+        raise ValueError(
+            "Invalid SRS 0x91 acknowledgement layout: "
+            f"expected {expected_packet_length} bytes with message length "
+            f"{expected_message_length}, received {len(packet)} bytes with "
+            f"message length {message_length}"
+        )
+
+    date = packet[5:8]
+    time = packet[8:11]
+    unit_type = packet[11]
+    kavach_id = int.from_bytes(packet[12:15], byteorder="big")
+    status = packet[15]
 
     status_map = {
         0x01: "OTP_SENT",
@@ -183,6 +204,12 @@ def parse_identification_ack(packet: bytes) -> dict:
     return {
         "message_type": message_type,
         "message_type_hex": f"0x{message_type:02X}",
+        "message_length": message_length,
+        "date": date.hex(" ").upper(),
+        "time": time.hex(" ").upper(),
+        "unit_type": unit_type,
+        "unit_type_hex": f"0x{unit_type:02X}",
+        "kavach_id": kavach_id,
         "status": status,
         "status_hex": f"0x{status:02X}",
         "status_name": status_map.get(
