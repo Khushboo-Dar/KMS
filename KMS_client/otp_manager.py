@@ -4,6 +4,11 @@ import os
 import re
 import oracledb
 
+try:
+    from .database_access import require_database_access
+except ImportError:  # Supports direct execution: python KMS_client/otp_manager.py
+    from KMS_client.database_access import require_database_access
+
 
 # ============================================================
 # Oracle Configuration
@@ -57,6 +62,8 @@ class OtpService:
     # --------------------------------------------------------
 
     def _get_connection(self):
+
+        require_database_access("retrieve the latest OTP message")
 
         return oracledb.connect(
             user=self.username,

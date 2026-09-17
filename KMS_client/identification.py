@@ -29,7 +29,7 @@ Reflected polynomial:
     0xEDB88320
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import struct
 
 
@@ -38,6 +38,10 @@ import struct
 # ============================================================
 
 SOF = bytes.fromhex("A5 C3")
+
+# KMS packet timestamps are defined in Indian Standard Time.  Do not rely on
+# the machine's local timezone, which can differ in deployments and CI.
+IST = timezone(timedelta(hours=5, minutes=30))
 
 MESSAGE_TYPE = 0x90
 
@@ -200,7 +204,7 @@ def build_identification_packet(
     # --------------------------------------------------------
 
     if dt is None:
-        dt = datetime.now()
+        dt = datetime.now(IST)
 
     # --------------------------------------------------------
     # Encode fields

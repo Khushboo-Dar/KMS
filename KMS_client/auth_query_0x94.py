@@ -34,7 +34,7 @@ CRC input:
     KAVACH ID
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from .app_config import (
     SOF,
@@ -49,6 +49,7 @@ from .crc_validator import calculate_crc_bytes
 # ============================================================
 
 MESSAGE_LENGTH = 14
+IST = timezone(timedelta(hours=5, minutes=30))
 
 
 # ============================================================
@@ -113,7 +114,7 @@ def build_authentication_query(
     """
 
     if timestamp is None:
-        timestamp = datetime.now()
+        timestamp = datetime.now(IST)
 
     # Message Type
     message_type = bytes([

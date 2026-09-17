@@ -1,274 +1,109 @@
-# main.py
+"""Command-line entry point for the fixed-identity KAVACH KMS client."""
 
-import logging
-import signal
+import argparse
+from pathlib import Path
 import sys
 
-from .app_config import (
-    KMS_IP,
-    KMS_PORT,
-    KAVACH_ID,
-    UNIT_TYPE,
-    SIM_ID,
-)
 
-from .udp_client import KmsUdpClient
-from .polling_manager import PollingManager
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-
-# ============================================================
-# Logging Configuration
-# ============================================================
-
-logging.basicConfig(
-    level=logging.INFO,
-    format=(
-        "%(asctime)s | "
-        "%(levelname)s | "
-        "%(name)s | "
-        "%(message)s"
-    ),
-)
-
-logger = logging.getLogger("KMS_MAIN")
+# Support both ``python -m KMS_client.main`` and ``python KMS_client/main.py``.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(PROJECT_ROOT))
+    from KMS_client.app_config import resolve_client_config
+    from KMS_client.authentication_flow import AuthenticationFlow
+    from KMS_client.polling_manager import PollingManager
+    from KMS_client.udp_client import KmsUdpClient
+else:
+    from .app_config import resolve_client_config
+    from .authentication_flow import AuthenticationFlow
+    from .polling_manager import PollingManager
+    from .udp_client import KmsUdpClient
 
 
-# ============================================================
-# Global Polling Manager
-# ============================================================
-
-polling_manager = None
-
-
-# ============================================================
-# Signal Handler
-# ============================================================
-
-def shutdown_handler(
-    signum,
-    frame
-):
-
-    logger.info(
-        "Shutdown signal received."
+def build_argument_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Authenticate the configured stationary KAVACH unit with KMS. "
+            "Its protocol identity is fixed in the application."
+        )
     )
-
-    global polling_manager
-
-    if polling_manager is not None:
-
-        try:
-            polling_manager.stop()
-
-        except Exception as e:
-
-            logger.error(
-                f"Error while stopping polling manager: {e}"
-            )
-
-    logger.info(
-        "KMS Client stopped."
+    parser.add_argument("--kms-ip", help="KMS server hostname or IP address")
+    parser.add_argument("--kms-port", help="KMS UDP port")
+    parser.add_argument("--udp-timeout-seconds", help="UDP receive timeout in seconds")
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Run the first poll only, then exit (useful for verification).",
     )
+    return parser
 
-    sys.exit(0)
 
+def main(argv: list[str] | None = None) -> int:
+    parser = build_argument_parser()
+    args = parser.parse_args(argv)
 
-# ============================================================
-# Display Configuration
-# ============================================================
+    try:
+        config = resolve_client_config(
+            kms_ip=args.kms_ip,
+            kms_port=args.kms_port,
+            udp_timeout_seconds=args.udp_timeout_seconds,
+        )
+    except ValueError as error:
+        parser.error(str(error))
 
-def print_configuration():
-
-    print()
     print("=" * 60)
     print("KAVACH KMS CLIENT")
     print("=" * 60)
-
-    print(
-        f"KMS IP       : {KMS_IP}"
-    )
-
-    print(
-        f"KMS Port     : {KMS_PORT}"
-    )
-
-    print(
-        f"KAVACH ID    : {KAVACH_ID}"
-    )
-
-    print(
-        f"Unit Type    : 0x{UNIT_TYPE:02X}"
-    )
-
-    print(
-        f"SIM ID       : 0x{SIM_ID:02X}"
-    )
-
-    print("=" * 60)
+    print(f"KAVACH ID : {config.kavach_id}")
+    print(f"Unit Type : 0x{config.unit_type:02X} ({config.unit_type_name})")
+    print(f"SIM ID    : 0x{config.sim_id:02X}")
+    print(f"KMS       : {config.kms_ip}:{config.kms_port}")
     print()
 
-
-# ============================================================
-# Create KMS Client
-# ============================================================
-
-def create_kms_client():
-
-    logger.info(
-        "Creating KMS UDP client..."
+    udp = KmsUdpClient(
+        host=config.kms_ip,
+        port=config.kms_port,
+        timeout=config.udp_timeout_seconds,
     )
-
-    client = KmsUdpClient(
-        server_ip=KMS_IP,
-        server_port=KMS_PORT,
-    )
-
-    return client
-
-
-# ============================================================
-# Create Polling Manager
-# ============================================================
-
-def create_polling_manager(
-    udp_client
-):
-
-    logger.info(
-        "Creating polling manager..."
-    )
-
-    manager = PollingManager(
-        udp_client=udp_client,
-        kavach_id=KAVACH_ID,
-        unit_type=UNIT_TYPE,
-        sim_id=SIM_ID,
-    )
-
-    return manager
-
-
-# ============================================================
-# Main Application
-# ============================================================
-
-def main():
-
-    global polling_manager
-
-    print_configuration()
-
-    logger.info(
-        "Starting KAVACH KMS Client..."
-    )
-
-    udp_client = None
 
     try:
-
-        # ----------------------------------------------------
-        # Create UDP Client
-        # ----------------------------------------------------
-
-        udp_client = create_kms_client()
-
-        # ----------------------------------------------------
-        # Create Polling Manager
-        # ----------------------------------------------------
-
-        polling_manager = create_polling_manager(
-            udp_client
+        print("=" * 60)
+        print("[1] INITIAL AUTHENTICATION")
+        print("=" * 60)
+        authentication = AuthenticationFlow(
+            udp_client=udp,
+            kavach_id=config.kavach_id,
+            unit_type=config.unit_type,
+            sim_id=config.sim_id,
         )
+        authentication.run_initial_with_retry()
+        print("\nInitial authentication completed successfully.")
 
-        # ----------------------------------------------------
-        # Start Polling
-        # ----------------------------------------------------
-
-        logger.info(
-            "Starting KMS polling..."
+        print("\n" + "=" * 60)
+        print("[2] START KMS POLLING")
+        print("=" * 60)
+        polling = PollingManager(
+            udp_client=udp,
+            auth_flow=authentication,
+            kavach_id=config.kavach_id,
+            unit_type=config.unit_type,
+            sim_id=config.sim_id,
         )
-
-        polling_manager.start()
-
+        polling.start(run_forever=not args.once)
+        return 0
     except KeyboardInterrupt:
-
-        logger.info(
-            "Keyboard interrupt received."
-        )
-
-    except Exception as e:
-
-        logger.exception(
-            f"KMS Client failed: {e}"
-        )
-
+        print("\nKMS client stopped by user.")
+        return 130
+    except Exception as error:
+        print("\n" + "=" * 60)
+        print("KMS CLIENT ERROR")
+        print("=" * 60)
+        print(f"{type(error).__name__}: {error}")
         return 1
-
     finally:
+        print("\nKMS client terminated.")
 
-        # ----------------------------------------------------
-        # Stop Polling
-        # ----------------------------------------------------
-
-        if polling_manager is not None:
-
-            try:
-
-                polling_manager.stop()
-
-            except Exception as e:
-
-                logger.error(
-                    f"Failed to stop polling manager: {e}"
-                )
-
-        # ----------------------------------------------------
-        # Close UDP Client
-        # ----------------------------------------------------
-
-        if udp_client is not None:
-
-            try:
-
-                udp_client.close()
-
-            except Exception as e:
-
-                logger.error(
-                    f"Failed to close UDP client: {e}"
-                )
-
-    logger.info(
-        "KMS Client exited successfully."
-    )
-
-    return 0
-
-
-# ============================================================
-# Entry Point
-# ============================================================
 
 if __name__ == "__main__":
-
-    # --------------------------------------------------------
-    # Register shutdown handlers
-    # --------------------------------------------------------
-
-    signal.signal(
-        signal.SIGINT,
-        shutdown_handler
-    )
-
-    signal.signal(
-        signal.SIGTERM,
-        shutdown_handler
-    )
-
-    # --------------------------------------------------------
-    # Start application
-    # --------------------------------------------------------
-
-    sys.exit(
-        main()
-    )
+    raise SystemExit(main())

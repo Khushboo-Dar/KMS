@@ -4,6 +4,11 @@ import os
 import oracledb
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+try:
+    from .database_access import require_database_access
+except ImportError:  # Supports direct execution: python KMS_client/decryption_service.py
+    from KMS_client.database_access import require_database_access
+
 
 ENV_KEY_NAME = "KMS_DB_ENCRYPTION_KEY_B64"
 NONCE_SIZE = 12
@@ -110,6 +115,7 @@ def decrypt_key(
 
 def main() -> None:
     service = DecryptionService()
+    require_database_access("read encrypted key sets for decryption")
     connection = oracledb.connect(
         user=get_required_env("ORACLE_USER"),
         password=get_required_env("ORACLE_PASSWORD"),
