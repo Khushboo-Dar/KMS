@@ -58,17 +58,35 @@ class KmsPollingManager:
             return False
         status=parse_authentication_status(response)
         remote=status["key_set_id"]
-        local=DatabaseService().latest_key_set_id()
-        print(f"0x95 received: remote Key Set ID={remote}, local Key Set ID={local}")
+        inventory = DatabaseService().key_set_inventory()
+        local = inventory["latest_key_set_id"]
+        expired = inventory["expired"]
+        total = inventory["total"]
+        threshold = inventory["refresh_threshold"]
+        capacity = inventory["capacity"]
+        print(
+            f"0x95 received: remote Key Set ID={remote}, "
+            f"local Key Set ID={local}; {expired}/{total} key sets expired"
+        )
+        if expired < threshold and total >= capacity:
+            print(
+                f"Keeping all {capacity} stored key sets until at least "
+                f"{threshold} have expired."
+            )
+            return True
         if local is not None and remote == local:
-            print("No new key set. Next query after 6 hours."); return True
-        print("New key set available. Requesting keys using 0x92.")
+            print("No newer key set is available. Keeping current rows unchanged.")
+            return True
+        print("New key set available; requesting replacements using 0x92.")
         time.sleep(self._window_delay())
         while self.running:
             try:
-                self.flow.request_keys(); print("New key set received and stored securely."); return True
+                self.flow.request_keys()
+                print("New key sets received; the local buffer was restored to 30 rows.")
+                return True
             except (ConnectionError, RuntimeError, TimeoutError, OSError) as e:
-                print(f"0x92/0x93 failed: {e}; retrying in 5 minutes"); time.sleep(RETRY_INTERVAL_SECONDS)
+                print(f"0x92/0x93 failed: {e}; retrying in 5 minutes")
+                time.sleep(RETRY_INTERVAL_SECONDS)
         return False
 
     def start(self,run_forever=True):

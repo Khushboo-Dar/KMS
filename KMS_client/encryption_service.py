@@ -13,6 +13,7 @@ TABLE_NAME = "KMS_KEY_SETS"
 NONCE_SIZE = 12
 VERSION = "v1"
 MAX_KEY_SETS = 30
+EXPIRED_KEY_SET_THRESHOLD = 15
 
 
 def _audit_logger() -> logging.Logger:
@@ -61,7 +62,7 @@ class EncryptionService:
         packet: bytes,
     ) -> int:
         now = datetime.now()
-        unique_key_sets = []
+        candidate_key_sets = []
         seen = set()
 
         for key_set in key_sets:
@@ -74,17 +75,49 @@ class EncryptionService:
             if valid_to <= now or identity in seen:
                 continue
             seen.add(identity)
-            unique_key_sets.append((valid_from, valid_to, key_1, key_2))
+            candidate_key_sets.append((valid_from, valid_to, key_1, key_2))
 
-        if len(unique_key_sets) > MAX_KEY_SETS:
+        if len(candidate_key_sets) > MAX_KEY_SETS:
             raise ValueError(
-                f"KMS response contains {len(unique_key_sets)} unique active key sets; "
+                f"KMS response contains {len(candidate_key_sets)} unique active key sets; "
                 f"maximum supported is {MAX_KEY_SETS}"
             )
 
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT KEY_SET_ID, VALID_FROM, VALID_TO FROM KMS_KEY_SETS"
+            )
+            existing = cursor.fetchall()
+
+        total_existing = len(existing)
+        if total_existing > MAX_KEY_SETS:
+            raise RuntimeError(
+                f"{TABLE_NAME} contains {total_existing} rows; maximum is "
+                f"{MAX_KEY_SETS}"
+            )
+
+        expired = [row for row in existing if row[2] <= now]
+        active_count = total_existing - len(expired)
+        if total_existing == 0:
+            replacements_needed = MAX_KEY_SETS
+        elif len(expired) >= EXPIRED_KEY_SET_THRESHOLD:
+            replacements_needed = MAX_KEY_SETS - active_count
+        else:
+            replacements_needed = MAX_KEY_SETS - total_existing
+
+        if replacements_needed == 0:
+            return 0
+        if len(candidate_key_sets) < replacements_needed:
+            raise RuntimeError(
+                "Received key sets cannot restore the local key-set buffer to "
+                f"{MAX_KEY_SETS} rows; keeping the existing rows unchanged"
+            )
+
+        selected_key_sets = candidate_key_sets[:replacements_needed]
+
         packet_hex = packet.hex().upper()
         rows = []
-        for valid_from, valid_to, key_1, key_2 in unique_key_sets:
+        for valid_from, valid_to, key_1, key_2 in selected_key_sets:
             encrypted_key_1 = self.encrypt_hex(
                 key_1, f"{TABLE_NAME}|KEY_1|{key_set_id}"
             )
@@ -108,23 +141,25 @@ class EncryptionService:
         logger = _audit_logger()
         try:
             with connection.cursor() as cursor:
-                cursor.execute(
-                    "SELECT KEY_SET_ID, VALID_FROM, VALID_TO FROM KMS_KEY_SETS"
-                )
-                removed = cursor.fetchall()
-                cursor.execute("DELETE FROM KMS_KEY_SETS")
-                if rows:
-                    cursor.executemany(
-                        """INSERT INTO KMS_KEY_SETS
-                        (KEY_SET_ID, VALID_FROM, VALID_TO, KEY_1, KEY_2, PKT)
-                        VALUES (:1, :2, :3, :4, :5, :6)""",
-                        rows,
+                if len(expired) >= EXPIRED_KEY_SET_THRESHOLD:
+                    cursor.execute(
+                        "DELETE FROM KMS_KEY_SETS WHERE VALID_TO <= :1",
+                        (now,),
                     )
+                cursor.executemany(
+                    """INSERT INTO KMS_KEY_SETS
+                    (KEY_SET_ID, VALID_FROM, VALID_TO, KEY_1, KEY_2, PKT)
+                    VALUES (:1, :2, :3, :4, :5, :6)""",
+                    rows,
+                )
             connection.commit()
         except Exception:
             connection.rollback()
             raise
 
+        removed = (
+            expired if len(expired) >= EXPIRED_KEY_SET_THRESHOLD else []
+        )
         for old_key_set_id, valid_from, valid_to in removed:
             logger.info(
                 "REMOVED key_set_id=%s valid_from=%s valid_to=%s",
@@ -134,7 +169,7 @@ class EncryptionService:
             )
         for _, valid_from, valid_to, _, _, _ in rows:
             logger.info(
-                "INSERTED key_set_id=%s valid_from=%s valid_to=%s",
+                "INSERTED replacement key_set_id=%s valid_from=%s valid_to=%s",
                 key_set_id,
                 valid_from,
                 valid_to,

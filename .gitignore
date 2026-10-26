@@ -7,3 +7,28 @@ __pycache__/
 *.pem
 secrets/
 credentials/
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python tooling and build artifacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+coverage.xml
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Local runtime files
+*.log
+*.log.*
+
+# Local investigation and backup scripts
+mac_backup/
